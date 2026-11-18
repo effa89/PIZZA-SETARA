@@ -1,0 +1,1188 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Piza Setara - Teka-Teki Pecahan Tahun 5</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Fredoka & Plus Jakarta Sans -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome untuk ikon -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Tone.js untuk kesan bunyi tanpa fail luaran -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+    <!-- Google MediaPipe Hands & Camera Utils -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            overflow: hidden;
+            user-select: none;
+            background-color: #1c1917;
+        }
+        h1, h2, h3, .font-display {
+            font-family: 'Fredoka', sans-serif;
+        }
+        
+        /* Corak meja piza moden */
+        .pizzeria-bg {
+            background-image: radial-gradient(#f59e0b 1px, transparent 1px), radial-gradient(#d97706 1px, #292524 1px);
+            background-size: 40px 40px;
+            background-position: 0 0, 20px 20px;
+        }
+
+        /* Animasi berdenyut lembut */
+        @keyframes floatSlow {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-6px); }
+        }
+        .animate-float {
+            animation: floatSlow 3s ease-in-out infinite;
+        }
+
+        /* Kanvas permainan penuh skrin */
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+        }
+        
+        /* Video tersembunyi untuk input MediaPipe */
+        #inputVideo {
+            display: none;
+        }
+
+        /* Scrollbar khas untuk analisis */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #292524; 
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #d97706; 
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body class="text-stone-100 h-screen w-screen relative overflow-hidden pizzeria-bg">
+
+    <!-- Video Webcam Tersembunyi -->
+    <video id="inputVideo" playsinline></video>
+
+    <!-- Kanvas Utama Permainan (Webcam + Landmarks + Piza + Zarah) -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD (Paparan Atas Semasa Bermain) -->
+    <div id="hudOverlay" class="hidden absolute top-0 left-0 w-full z-20 p-3 sm:p-5 pointer-events-none flex flex-col justify-between h-full">
+        <!-- Bar Atas -->
+        <div class="flex flex-wrap items-center justify-between gap-2 max-w-6xl mx-auto w-full">
+            <!-- Skor & Kombo -->
+            <div class="flex items-center gap-3 bg-stone-900/85 backdrop-blur-md border-2 border-amber-500/50 rounded-2xl px-4 py-2 shadow-xl">
+                <div class="bg-amber-500 text-stone-950 p-2 rounded-xl font-bold">
+                    <i class="fa-solid fa-pizza-slice text-lg"></i>
+                </div>
+                <div>
+                    <div class="text-xs text-amber-300 font-semibold uppercase tracking-wider">Skor Chef</div>
+                    <div id="scoreDisplay" class="font-display text-2xl sm:text-3xl font-bold text-white leading-none">0</div>
+                </div>
+                <div id="comboBadge" class="hidden ml-2 bg-gradient-to-r from-red-600 to-orange-500 text-white text-xs sm:text-sm font-display font-bold px-3 py-1 rounded-full shadow-lg animate-bounce">
+                    Kombo x2!
+                </div>
+            </div>
+
+            <!-- Pemasa 90 Saat -->
+            <div class="flex items-center gap-3 bg-stone-900/85 backdrop-blur-md border-2 border-red-500/60 rounded-2xl px-5 py-2 shadow-xl">
+                <i class="fa-solid fa-stopwatch text-red-400 text-xl sm:text-2xl animate-pulse"></i>
+                <div>
+                    <div class="text-xs text-stone-400 font-semibold uppercase tracking-wider">Masa</div>
+                    <div id="timerDisplay" class="font-display text-2xl sm:text-3xl font-bold text-white leading-none">01:30</div>
+                </div>
+            </div>
+
+            <!-- Kawalan Pantas (Bunyi / Keluar) -->
+            <div class="flex items-center gap-2 pointer-events-auto">
+                <button id="toggleSoundBtn" class="bg-stone-900/85 hover:bg-stone-800 border border-stone-700 text-amber-400 p-3 rounded-xl shadow-lg transition" title="Togol Bunyi">
+                    <i id="soundIcon" class="fa-solid fa-volume-high text-lg"></i>
+                </button>
+                <button id="endEarlyBtn" class="bg-red-900/85 hover:bg-red-800 border border-red-700 text-white px-3 py-2.5 rounded-xl font-semibold text-sm shadow-lg transition">
+                    <i class="fa-solid fa-flag-checkered mr-1"></i> Tamat
+                </button>
+            </div>
+        </div>
+
+        <!-- Panduan Bawah & Status Tangan -->
+        <div class="flex flex-col items-center gap-2 mb-2">
+            <!-- Mesej Maklum Balas Pantas -->
+            <div id="feedbackToast" class="opacity-0 transition-opacity duration-300 bg-stone-900/90 border-2 border-amber-400 text-amber-300 font-display text-lg sm:text-xl px-6 py-2 rounded-full shadow-2xl">
+                Cantuman Sempurna! +100
+            </div>
+
+            <!-- Penunjuk Status Dwikawalan Tangan -->
+            <div class="flex items-center gap-4 bg-stone-950/80 backdrop-blur-md border border-stone-700/80 px-5 py-2 rounded-2xl text-xs sm:text-sm shadow-lg">
+                <div class="flex items-center gap-2">
+                    <span id="leftHandDot" class="w-3 h-3 rounded-full bg-red-500"></span>
+                    <span class="text-stone-300 font-medium">Tangan Kiri</span>
+                </div>
+                <span class="text-stone-600">|</span>
+                <div class="text-amber-300 font-semibold text-center">
+                    <i class="fa-solid fa-hand-pinch mr-1"></i> Cubit (Pinch) 2 keping piza setara & cantumkan!
+                </div>
+                <span class="text-stone-600">|</span>
+                <div class="flex items-center gap-2">
+                    <span id="rightHandDot" class="w-3 h-3 rounded-full bg-red-500"></span>
+                    <span class="text-stone-300 font-medium">Tangan Kanan</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SKRIN 1: MENU MULA (RESTORAN PIZA MODEN) -->
+    <div id="startScreen" class="absolute inset-0 z-30 flex items-center justify-center p-4 bg-stone-950/75 backdrop-blur-sm">
+        <div class="bg-stone-900 border-4 border-amber-500 rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+            <!-- Hiasan Jalur Restoran Itali/Moden -->
+            <div class="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-emerald-600 via-amber-400 to-red-600"></div>
+
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-amber-500/20 border-2 border-amber-400 mb-3 animate-float">
+                    <i class="fa-solid fa-pizza-slice text-4xl text-amber-400"></i>
+                </div>
+                <span class="block text-amber-400 font-bold tracking-widest uppercase text-xs sm:text-sm mb-1">Matematik Tahun 5 • Pecahan Setara</span>
+                <h1 class="font-display text-3xl sm:text-5xl font-bold text-white tracking-tight">
+                    PIZA <span class="text-amber-400">SETARA</span>
+                </h1>
+                <p class="text-stone-300 mt-2 text-sm sm:text-base max-w-lg mx-auto">
+                    Selamat datang ke dapur piza pintar! Gunakan kamera web dan kedua-dua tangan anda untuk memadankan kepingan piza yang mempunyai nilai pecahan yang sama.
+                </p>
+            </div>
+
+            <!-- Kad Cara Bermain -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                <div class="bg-stone-800/90 border border-stone-700 p-4 rounded-2xl text-center">
+                    <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto mb-2 text-lg">
+                        <i class="fa-solid fa-hands"></i>
+                    </div>
+                    <h3 class="font-display font-semibold text-white text-sm mb-1">1. Kesan Tangan</h3>
+                    <p class="text-xs text-stone-400">Angkat kedua-dua tangan di hadapan kamera sehingga titik rangka muncul.</p>
+                </div>
+                <div class="bg-stone-800/90 border border-stone-700 p-4 rounded-2xl text-center">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-2 text-lg">
+                        <i class="fa-solid fa-hand-back-fist"></i>
+                    </div>
+                    <h3 class="font-display font-semibold text-white text-sm mb-1">2. Isyarat Pinch</h3>
+                    <p class="text-xs text-stone-400">Rapatkan ibu jari & jari telunjuk pada kepingan piza untuk menangkapnya.</p>
+                </div>
+                <div class="bg-stone-800/90 border border-stone-700 p-4 rounded-2xl text-center">
+                    <div class="w-10 h-10 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-2 text-lg">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </div>
+                    <h3 class="font-display font-semibold text-white text-sm mb-1">3. Cantum Setara</h3>
+                    <p class="text-xs text-stone-400">Temukan dua pecahan setara (cth: <span class="text-amber-300 font-bold">1/2</span> & <span class="text-amber-300 font-bold">3/6</span>) dalam 90 saat!</p>
+                </div>
+            </div>
+
+            <!-- Status Kamera & Butang Mula -->
+            <div class="flex flex-col items-center gap-3">
+                <div id="cameraStatusBox" class="flex items-center gap-2 text-xs sm:text-sm text-amber-300 bg-amber-950/50 border border-amber-700/50 px-4 py-2 rounded-xl">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    <span id="cameraStatusText">Menyediakan sistem kamera & MediaPipe Hands...</span>
+                </div>
+
+                <button id="startGameBtn" disabled class="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 disabled:opacity-50 disabled:cursor-not-allowed text-stone-950 font-display font-bold text-lg sm:text-xl rounded-2xl shadow-xl shadow-orange-600/30 transition transform active:scale-95 flex items-center justify-center gap-3">
+                    <i class="fa-solid fa-play"></i>
+                    <span>MULA MEMASAK PIZA</span>
+                </button>
+                
+                <p id="fallbackHint" class="hidden text-xs text-stone-400 text-center mt-1">
+                    Tiada kamera dikesan? Anda juga boleh klik & seret (atau sentuh) pada skrin untuk menguji permainan.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- SKRIN 2: ANALISIS JAWAPAN & TAMAT PERMAINAN -->
+    <div id="endScreen" class="hidden absolute inset-0 z-30 flex items-center justify-center p-4 bg-stone-950/85 backdrop-blur-md">
+        <div class="bg-stone-900 border-4 border-amber-500 rounded-3xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="text-center mb-5">
+                <span class="inline-block bg-amber-500/20 text-amber-300 border border-amber-500/40 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-2">
+                    Laporan Dapur Matematik Tahun 5
+                </span>
+                <h2 class="font-display text-3xl sm:text-4xl font-bold text-white">Masa Tamat, Chef!</h2>
+            </div>
+
+            <!-- Kad Statistik Ringkas -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                <div class="bg-stone-800 border border-stone-700 p-3 rounded-2xl text-center">
+                    <div class="text-xs text-stone-400">Skor Akhir</div>
+                    <div id="finalScore" class="font-display text-2xl sm:text-3xl font-bold text-amber-400">0</div>
+                </div>
+                <div class="bg-stone-800 border border-stone-700 p-3 rounded-2xl text-center">
+                    <div class="text-xs text-stone-400">Cantuman Betul</div>
+                    <div id="finalCorrect" class="font-display text-2xl sm:text-3xl font-bold text-emerald-400">0</div>
+                </div>
+                <div class="bg-stone-800 border border-stone-700 p-3 rounded-2xl text-center">
+                    <div class="text-xs text-stone-400">Kombo Tertinggi</div>
+                    <div id="finalMaxCombo" class="font-display text-2xl sm:text-3xl font-bold text-orange-400">0x</div>
+                </div>
+                <div class="bg-stone-800 border border-stone-700 p-3 rounded-2xl text-center">
+                    <div class="text-xs text-stone-400">Ketepatan</div>
+                    <div id="finalAccuracy" class="font-display text-2xl sm:text-3xl font-bold text-sky-400">0%</div>
+                </div>
+            </div>
+
+            <!-- Senarai Analisis Jawapan -->
+            <div class="flex-1 overflow-hidden flex flex-col bg-stone-950/60 border border-stone-800 rounded-2xl p-4 mb-5">
+                <h3 class="font-display text-lg font-semibold text-amber-300 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-clipboard-check"></i> Analisis Cantuman Pecahan Setara
+                </h3>
+                <div id="analysisList" class="overflow-y-auto space-y-2 pr-2 flex-1 text-sm">
+                    <!-- Item analisis akan dijana melalui JavaScript -->
+                </div>
+            </div>
+
+            <!-- Butang Main Semula -->
+            <div class="flex justify-center">
+                <button id="restartGameBtn" class="px-8 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-display font-bold text-lg rounded-2xl shadow-lg transition transform active:scale-95 flex items-center gap-2">
+                    <i class="fa-solid fa-rotate-right"></i>
+                    <span>Main Pusingan Baharu</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ============================================================================
+         * PIZA SETARA - PERMAINAN TEKA-TEKI MATEMATIK TAHUN 5 (PECAHAN SETARA)
+         * ============================================================================
+         * Menggabungkan Google MediaPipe Hands, Web Audio (Tone.js), Fizik Kanvas 2D,
+         * dan penjana pecahan setara berasaskan kurikulum Matematik Tahun 5.
+         */
+
+        // --- 1. PEMBOLEHUBAH GLOBAL & KEADAAN PERMAINAN ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const videoElement = document.getElementById('inputVideo');
+
+        let gameState = 'MENU'; // 'MENU', 'PLAYING', 'ENDED'
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let correctCount = 0;
+        let wrongCount = 0;
+        let timeLeft = 90;
+        let timerInterval = null;
+        let soundEnabled = true;
+        let cameraReady = false;
+
+        // Senarai kepingan piza terapung, kesan zarah, dan rekod analisis
+        let pizzaSlices = [];
+        let particles = [];
+        let floatingTexts = [];
+        let matchHistory = [];
+
+        // Data penjejakan dwi-tangan dari MediaPipe
+        // Setiap tangan menyimpan: { active, x, y, isPinching, pinchDist, heldSliceId, landmarks }
+        let handsState = [
+            { id: 0, label: 'Kiri', active: false, x: 0, y: 0, isPinching: false, heldSlice: null, landmarks: null },
+            { id: 1, label: 'Kanan', active: false, x: 0, y: 0, isPinching: false, heldSlice: null, landmarks: null }
+        ];
+
+        // Sokongan tetikus / sentuhan sebagai sandaran jika tiada webcam
+        let pointerState = { active: false, x: 0, y: 0, isPinching: false, heldSlice: null };
+
+        // --- 2. SISTEM AUDIO SINTETIS (TONE.JS) ---
+        let synth, polySynth;
+        function initAudio() {
+            if (!synth && typeof Tone !== 'undefined') {
+                synth = new Tone.Synth({
+                    oscillator: { type: 'triangle' },
+                    envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 }
+                }).toDestination();
+
+                polySynth = new Tone.PolySynth(Tone.Synth, {
+                    oscillator: { type: 'sine' },
+                    envelope: { attack: 0.02, decay: 0.2, sustain: 0.2, release: 0.4 }
+                }).toDestination();
+            }
+        }
+
+        function playSound(type) {
+            if (!soundEnabled || !synth) return;
+            try {
+                if (Tone.context.state !== 'running') Tone.start();
+                const now = Tone.now();
+                if (type === 'pinch') {
+                    synth.triggerAttackRelease('C5', '32n', now);
+                } else if (type === 'release') {
+                    synth.triggerAttackRelease('G4', '32n', now);
+                } else if (type === 'success') {
+                    polySynth.triggerAttackRelease(['C5', 'E5', 'G5', 'C6'], '16n', now);
+                } else if (type === 'error') {
+                    synth.triggerAttackRelease('F#3', '8n', now);
+                    synth.triggerAttackRelease('F3', '8n', now + 0.12);
+                } else if (type === 'tick') {
+                    synth.triggerAttackRelease('A5', '64n', now);
+                }
+            } catch (e) {
+                console.warn('Audio error:', e);
+            }
+        }
+
+        // --- 3. PENJANA SOALAN PECAHAN SETARA (ARAS TAHUN 5) ---
+        // Pecahan asas Tahun 5 (penyebut hingga 10)
+        const BASE_FRACTIONS = [
+            { num: 1, den: 2 },
+            { num: 1, den: 3 },
+            { num: 2, den: 3 },
+            { num: 1, den: 4 },
+            { num: 3, den: 4 },
+            { num: 1, den: 5 },
+            { num: 2, den: 5 },
+            { num: 3, den: 5 },
+            { num: 4, den: 5 },
+            { num: 1, den: 6 },
+            { num: 5, den: 6 },
+            { num: 1, den: 8 },
+            { num: 3, den: 8 },
+            { num: 1, den: 10 },
+            { num: 3, den: 10 }
+        ];
+
+        // Warna topping piza untuk membezakan visual dengan menarik
+        const PIZZA_STYLES = [
+            { crust: '#d97706', cheese: '#fde047', topping: '#dc2626', name: 'Pepperoni' },
+            { crust: '#b45309', cheese: '#fef08a', topping: '#16a34a', name: 'Pesto Sayuran' },
+            { crust: '#d97706', cheese: '#facc15', topping: '#ea580c', name: 'Ayam BBQ' },
+            { crust: '#92400e', cheese: '#fde047', topping: '#9333ea', name: 'Cendawan Truffle' }
+        ];
+
+        function generateEquivalentPair(pairId) {
+            const base = BASE_FRACTIONS[Math.floor(Math.random() * BASE_FRACTIONS.length)];
+            // Pilih dua pendarab berbeza (contoh: x1 dan x2, atau x2 dan x3) supaya pecahan setara
+            // Penyebut maksimum sekitar 12-20 sesuai untuk Tahun 5
+            const possibleMults = [1, 2, 3, 4].filter(m => base.den * m <= 16);
+            if (possibleMults.length < 2) possibleMults.push(2);
+
+            // Acak dua pendarab unik
+            const shuffledMults = possibleMults.sort(() => Math.random() - 0.5);
+            const m1 = shuffledMults[0];
+            const m2 = shuffledMults[1];
+
+            const style1 = PIZZA_STYLES[Math.floor(Math.random() * PIZZA_STYLES.length)];
+            const style2 = PIZZA_STYLES[Math.floor(Math.random() * PIZZA_STYLES.length)];
+
+            return [
+                {
+                    num: base.num * m1,
+                    den: base.den * m1,
+                    baseNum: base.num,
+                    baseDen: base.den,
+                    pairId: pairId,
+                    style: style1
+                },
+                {
+                    num: base.num * m2,
+                    den: base.den * m2,
+                    baseNum: base.num,
+                    baseDen: base.den,
+                    pairId: pairId,
+                    style: style2
+                }
+            ];
+        }
+
+        function spawnPizzaWave() {
+            // Pastikan sentiasa ada 3 pasangan (6 keping piza) di skrin
+            const targetPairs = 3;
+            const currentPairsCount = Math.floor(pizzaSlices.length / 2);
+            const pairsNeeded = targetPairs - currentPairsCount;
+
+            const margin = 110;
+            const safeW = Math.max(300, canvas.width - margin * 2);
+            const safeH = Math.max(300, canvas.height - margin * 2);
+
+            for (let i = 0; i < pairsNeeded; i++) {
+                const pairId = Date.now() + Math.random();
+                const pair = generateEquivalentPair(pairId);
+
+                pair.forEach(fracData => {
+                    // Cari posisi rawak yang tidak terlalu bertindih
+                    let px = margin + Math.random() * safeW;
+                    let py = margin + Math.random() * safeH;
+
+                    pizzaSlices.push({
+                        id: Math.random().toString(36).substr(2, 9),
+                        num: fracData.num,
+                        den: fracData.den,
+                        baseNum: fracData.baseNum,
+                        baseDen: fracData.baseDen,
+                        pairId: fracData.pairId,
+                        style: fracData.style,
+                        x: px,
+                        y: py,
+                        vx: (Math.random() - 0.5) * 1.4,
+                        vy: (Math.random() - 0.5) * 1.4,
+                        radius: Math.min(64, Math.max(48, canvas.width * 0.048)),
+                        rotation: (Math.random() - 0.5) * 0.4,
+                        rotSpeed: (Math.random() - 0.5) * 0.008,
+                        heldBy: null, // 'hand_0', 'hand_1', atau 'pointer'
+                        scale: 0.1, // Animasi muncul membesar
+                        shakeTimer: 0
+                    });
+                });
+            }
+        }
+
+        // --- 4. KESAN ZARAH BERKILAU & TEKS TERAPUNG ---
+        function createSparkles(x, y, color = '#facc15', count = 35) {
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 6;
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    size: 3 + Math.random() * 5,
+                    color: i % 2 === 0 ? color : '#ffffff',
+                    alpha: 1,
+                    decay: 0.018 + Math.random() * 0.02,
+                    isStar: i % 3 === 0
+                });
+            }
+        }
+
+        function addFloatingText(x, y, text, color = '#4ade80') {
+            floatingTexts.push({
+                x: x,
+                y: y,
+                text: text,
+                color: color,
+                alpha: 1,
+                vy: -1.8
+            });
+        }
+
+        // --- 5. LOGIK INTERAKSI PINCH & CANTUMAN ---
+        function checkPinchInteractions() {
+            // Gabungkan sumber kawalan (2 Tangan MediaPipe + 1 Pointer Sandaran)
+            const controllers = [
+                { key: 'hand_0', obj: handsState[0] },
+                { key: 'hand_1', obj: handsState[1] },
+                { key: 'pointer', obj: pointerState }
+            ];
+
+            controllers.forEach(ctrl => {
+                const c = ctrl.obj;
+                if (!c.active) {
+                    // Lepaskan piza jika tangan hilang dari kamera
+                    if (c.heldSlice) {
+                        c.heldSlice.heldBy = null;
+                        c.heldSlice = null;
+                    }
+                    return;
+                }
+
+                if (c.isPinching) {
+                    // Jika belum memegang piza, cuba tangkap piza berdekatan
+                    if (!c.heldSlice) {
+                        let closest = null;
+                        let minDist = 90; // Jejari tangkapan mesra pengguna
+
+                        for (let slice of pizzaSlices) {
+                            if (slice.heldBy === null) {
+                                const d = Math.hypot(c.x - slice.x, c.y - slice.y);
+                                if (d < slice.radius + 25 && d < minDist) {
+                                    minDist = d;
+                                    closest = slice;
+                                }
+                            }
+                        }
+
+                        if (closest) {
+                            closest.heldBy = ctrl.key;
+                            c.heldSlice = closest;
+                            playSound('pinch');
+                            createSparkles(closest.x, closest.y, '#fbbf24', 10);
+                        }
+                    } else {
+                        // Gerakkan piza mengikut titik Pinch dengan lancar
+                        c.heldSlice.x += (c.x - c.heldSlice.x) * 0.45;
+                        c.heldSlice.y += (c.y - c.heldSlice.y) * 0.45;
+                    }
+                } else {
+                    // Isyarat Pinch dilepaskan
+                    if (c.heldSlice) {
+                        c.heldSlice.heldBy = null;
+                        c.heldSlice = null;
+                        playSound('release');
+                    }
+                }
+            });
+
+            // Semak perlanggaran / cantuman antara DUA kepingan piza yang sedang dipegang serentak!
+            const heldSlices = pizzaSlices.filter(s => s.heldBy !== null);
+            if (heldSlices.length >= 2) {
+                const s1 = heldSlices[0];
+                const s2 = heldSlices[1];
+                const dist = Math.hypot(s1.x - s2.x, s1.y - s2.y);
+
+                // Jika kedua-dua piza didekatkan sehingga bertindih
+                if (dist < (s1.radius + s2.radius) * 0.75) {
+                    evaluateMatch(s1, s2);
+                }
+            }
+        }
+
+        function evaluateMatch(s1, s2) {
+            // Semak kesetaraan pecahan menggunakan pendaraban silang: num1 * den2 === num2 * den1
+            const isEquivalent = (s1.num * s2.den) === (s2.num * s1.den);
+            const midX = (s1.x + s2.x) / 2;
+            const midY = (s1.y + s2.y) / 2;
+
+            // Lepaskan pegangan kedua-dua tangan
+            handsState.forEach(h => { if (h.heldSlice === s1 || h.heldSlice === s2) h.heldSlice = null; });
+            if (pointerState.heldSlice === s1 || pointerState.heldSlice === s2) pointerState.heldSlice = null;
+
+            if (isEquivalent) {
+                // JAWAPAN BETUL!
+                combo++;
+                if (combo > maxCombo) maxCombo = combo;
+                correctCount++;
+
+                const pointsEarned = 100 + (combo > 1 ? (combo - 1) * 25 : 0);
+                score += pointsEarned;
+
+                playSound('success');
+                createSparkles(midX, midY, '#facc15', 45);
+                addFloatingText(midX, midY - 20, `${s1.num}/${s1.den} = ${s2.num}/${s2.den} (+${pointsEarned})`, '#4ade80');
+                showToast(`Setara! ${s1.num}/${s1.den} = ${s2.num}/${s2.den} (+${pointsEarned})`, 'success');
+
+                // Rekod dalam analisis
+                matchHistory.push({
+                    f1: `${s1.num}/${s1.den}`,
+                    f2: `${s2.num}/${s2.den}`,
+                    base: `${s1.baseNum}/${s1.baseDen}`,
+                    correct: true,
+                    points: pointsEarned
+                });
+
+                // Buang kedua-dua kepingan piza dan jana pasangan baharu
+                pizzaSlices = pizzaSlices.filter(s => s.id !== s1.id && s.id !== s2.id);
+                spawnPizzaWave();
+            } else {
+                // JAWAPAN SALAH!
+                combo = 0;
+                wrongCount++;
+                score = Math.max(0, score - 20);
+
+                playSound('error');
+                createSparkles(midX, midY, '#ef4444', 20);
+                addFloatingText(midX, midY - 20, `${s1.num}/${s1.den} ≠ ${s2.num}/${s2.den}`, '#f87171');
+                showToast(`Bukan Setara! ${s1.num}/${s1.den} tidak sama dengan ${s2.num}/${s2.den}`, 'error');
+
+                matchHistory.push({
+                    f1: `${s1.num}/${s1.den}`,
+                    f2: `${s2.num}/${s2.den}`,
+                    base: `Tidak Setara`,
+                    correct: false,
+                    points: -20
+                });
+
+                // Tolak kedua-dua kepingan piza menjauhi satu sama lain supaya tidak berulang serta-merta
+                s1.heldBy = null;
+                s2.heldBy = null;
+                s1.shakeTimer = 25;
+                s2.shakeTimer = 25;
+                const angle = Math.atan2(s1.y - s2.y, s1.x - s2.x);
+                s1.x += Math.cos(angle) * 70;
+                s1.y += Math.sin(angle) * 70;
+                s2.x -= Math.cos(angle) * 70;
+                s2.y -= Math.sin(angle) * 70;
+            }
+
+            updateHUD();
+        }
+
+        // --- 6. LUKISAN VISUAL KANVAS (WEBCAM + LANDMARKS + PIZA) ---
+        function drawPizzaSlice(slice) {
+            ctx.save();
+            
+            // Kesan gegaran jika salah cantum
+            let shakeX = 0;
+            if (slice.shakeTimer > 0) {
+                shakeX = Math.sin(slice.shakeTimer * 1.5) * 6;
+                slice.shakeTimer--;
+            }
+
+            ctx.translate(slice.x + shakeX, slice.y);
+            ctx.scale(slice.scale, slice.scale);
+            ctx.rotate(slice.rotation);
+
+            const r = slice.radius;
+            const isHeld = slice.heldBy !== null;
+
+            // Bayang-bayang & Cahaya jika dipegang
+            if (isHeld) {
+                ctx.shadowColor = '#facc15';
+                ctx.shadowBlur = 25;
+            } else {
+                ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                ctx.shadowBlur = 12;
+                ctx.shadowOffsetY = 6;
+            }
+
+            // 1. Bulatan Dasar Kerak Piza (Crust)
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+            ctx.fillStyle = slice.style.crust;
+            ctx.fill();
+            ctx.lineWidth = isHeld ? 4 : 2;
+            ctx.strokeStyle = isHeld ? '#fef08a' : '#78350f';
+            ctx.stroke();
+
+            // Reset bayang untuk lapisan dalaman
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetY = 0;
+
+            // 2. Lapisan Sos & Keju (Asas Bulatan)
+            const innerR = r * 0.84;
+            ctx.beginPath();
+            ctx.arc(0, 0, innerR, 0, Math.PI * 2);
+            ctx.fillStyle = '#451a03'; // Latar potongan kosong
+            ctx.fill();
+
+            // 3. Lukis Sektor Pecahan Berlorek (Mewakili nilai pecahan secara visual!)
+            const sliceAngle = (Math.PI * 2) / slice.den;
+            for (let i = 0; i < slice.num; i++) {
+                const startA = -Math.PI / 2 + i * sliceAngle;
+                const endA = startA + sliceAngle;
+
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.arc(0, 0, innerR, startA, endA);
+                ctx.closePath();
+                ctx.fillStyle = slice.style.cheese;
+                ctx.fill();
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = '#b45309';
+                ctx.stroke();
+
+                // Hiasan Topping kecil pada setiap potongan berlorek
+                const midA = (startA + endA) / 2;
+                const topX = Math.cos(midA) * (innerR * 0.58);
+                const topY = Math.sin(midA) * (innerR * 0.58);
+                ctx.beginPath();
+                ctx.arc(topX, topY, Math.max(3, r * 0.08), 0, Math.PI * 2);
+                ctx.fillStyle = slice.style.topping;
+                ctx.fill();
+            }
+
+            // Garisan pembahagi untuk potongan yang tidak berlorek (membantu murid Tahun 5 membilang penyebut)
+            for (let i = slice.num; i < slice.den; i++) {
+                const angle = -Math.PI / 2 + i * sliceAngle;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(Math.cos(angle) * innerR, Math.sin(angle) * innerR);
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            // 4. Lencana Nombor Pecahan di Tengah Piza
+            ctx.rotate(-slice.rotation); // Kekalkan nombor tegak supaya mudah dibaca!
+            const badgeR = r * 0.48;
+            ctx.beginPath();
+            ctx.arc(0, 0, badgeR, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(28, 25, 23, 0.92)';
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#f59e0b';
+            ctx.stroke();
+
+            // Pengangka (Numerator)
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `bold ${Math.round(r * 0.34)}px 'Fredoka', sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(slice.num, 0, -r * 0.17);
+
+            // Garis Pecahan
+            ctx.beginPath();
+            ctx.moveTo(-badgeR * 0.55, 0);
+            ctx.lineTo(badgeR * 0.55, 0);
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+
+            // Penyebut (Denominator)
+            ctx.fillStyle = '#fde047';
+            ctx.fillText(slice.den, 0, r * 0.19);
+
+            ctx.restore();
+        }
+
+        function drawHandLandmarksAndCursor(hand) {
+            if (!hand.active) return;
+
+            // Lukis rangka landmarks jika ada data dari MediaPipe
+            if (hand.landmarks) {
+                ctx.save();
+                // Lukis sambungan tulang tangan
+                const connections = [
+                    [0,1],[1,2],[2,3],[3,4],       // Ibu jari
+                    [0,5],[5,6],[6,7],[7,8],       // Telunjuk
+                    [5,9],[9,10],[10,11],[11,12],  // Tengah
+                    [9,13],[13,14],[14,15],[15,16],// Manis
+                    [13,17],[17,18],[18,19],[19,20],// Kelingking
+                    [0,17]                         // Tapak tangan
+                ];
+
+                ctx.strokeStyle = hand.isPinching ? 'rgba(74, 222, 128, 0.75)' : 'rgba(251, 191, 36, 0.55)';
+                ctx.lineWidth = 3;
+
+                connections.forEach(([i, j]) => {
+                    const p1 = hand.landmarks[i];
+                    const p2 = hand.landmarks[j];
+                    // Koordinat dicerminkan secara mendatar (1 - x)
+                    ctx.beginPath();
+                    ctx.moveTo((1 - p1.x) * canvas.width, p1.y * canvas.height);
+                    ctx.lineTo((1 - p2.x) * canvas.width, p2.y * canvas.height);
+                    ctx.stroke();
+                });
+
+                // Lukis titik sendi
+                hand.landmarks.forEach((pt, idx) => {
+                    const lx = (1 - pt.x) * canvas.width;
+                    const ly = pt.y * canvas.height;
+                    ctx.beginPath();
+                    ctx.arc(lx, ly, (idx === 4 || idx === 8) ? 6 : 3.5, 0, Math.PI * 2);
+                    ctx.fillStyle = (idx === 4 || idx === 8) ? '#ef4444' : '#ffffff';
+                    ctx.fill();
+                });
+                ctx.restore();
+            }
+
+            // Lukis Kursor Pinch yang Jelas pada titik tengah Ibu Jari & Telunjuk
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(hand.x, hand.y, hand.isPinching ? 18 : 26, 0, Math.PI * 2);
+            ctx.fillStyle = hand.isPinching ? 'rgba(74, 222, 128, 0.35)' : 'rgba(251, 191, 36, 0.2)';
+            ctx.fill();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = hand.isPinching ? '#4ade80' : '#fbbf24';
+            ctx.stroke();
+
+            // Ikon kecil di tengah kursor
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 11px "Plus Jakarta Sans", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(hand.isPinching ? 'PINCH!' : hand.label, hand.x, hand.y - 32);
+            ctx.restore();
+        }
+
+        function updateAndDrawParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.08; // Graviti ringan
+                p.alpha -= p.decay;
+
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                const ft = floatingTexts[i];
+                ft.y += ft.vy;
+                ft.alpha -= 0.015;
+
+                if (ft.alpha <= 0) {
+                    floatingTexts.splice(i, 1);
+                    continue;
+                }
+
+                ctx.save();
+                ctx.globalAlpha = ft.alpha;
+                ctx.font = "bold 22px 'Fredoka', sans-serif";
+                ctx.textAlign = 'center';
+                ctx.strokeStyle = '#1c1917';
+                ctx.lineWidth = 4;
+                ctx.strokeText(ft.text, ft.x, ft.y);
+                ctx.fillStyle = ft.color;
+                ctx.fillText(ft.text, ft.x, ft.y);
+                ctx.restore();
+            }
+        }
+
+        // --- 7. GELUNG ANIMASI UTAMA ---
+        function renderLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Lukis Suapan Webcam Masa Nyata (Dicerminkan) jika tersedia
+            if (cameraReady && videoElement.readyState >= 2) {
+                ctx.save();
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+                
+                // Kira nisbah aspek supaya video memenuhi kanvas tanpa herot
+                const vRatio = videoElement.videoWidth / videoElement.videoHeight;
+                const cRatio = canvas.width / canvas.height;
+                let drawW = canvas.width, drawH = canvas.height, offsetX = 0, offsetY = 0;
+
+                if (cRatio > vRatio) {
+                    drawH = canvas.width / vRatio;
+                    offsetY = (canvas.height - drawH) / 2;
+                } else {
+                    drawW = canvas.height * vRatio;
+                    offsetX = (canvas.width - drawW) / 2;
+                }
+
+                ctx.drawImage(videoElement, offsetX, offsetY, drawW, drawH);
+                ctx.restore();
+
+                // Lapisan gelap separa lutsinar bertemakan restoran supaya kepingan piza & nombor sangat jelas dibaca
+                ctx.fillStyle = 'rgba(28, 25, 23, 0.48)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            // 2. Kemaskini & Lukis Kepingan Piza Terapung (Semasa Bermain)
+            if (gameState === 'PLAYING') {
+                checkPinchInteractions();
+
+                const pad = 75;
+                pizzaSlices.forEach(slice => {
+                    // Animasi membesar semasa muncul
+                    if (slice.scale < 1) {
+                        slice.scale = Math.min(1, slice.scale + 0.08);
+                    }
+
+                    // Gerakan terapung jika tidak dipegang
+                    if (slice.heldBy === null) {
+                        slice.x += slice.vx;
+                        slice.y += slice.vy;
+                        slice.rotation += slice.rotSpeed;
+
+                        // Lantunan pada sempadan skrin
+                        if (slice.x < pad) { slice.x = pad; slice.vx *= -1; }
+                        if (slice.x > canvas.width - pad) { slice.x = canvas.width - pad; slice.vx *= -1; }
+                        if (slice.y < pad + 40) { slice.y = pad + 40; slice.vy *= -1; }
+                        if (slice.y > canvas.height - pad - 30) { slice.y = canvas.height - pad - 30; slice.vy *= -1; }
+                    }
+
+                    drawPizzaSlice(slice);
+                });
+
+                // Lukis landmarks & kursor kedua-dua tangan
+                handsState.forEach(h => drawHandLandmarksAndCursor(h));
+                if (pointerState.active) drawHandLandmarksAndCursor(pointerState);
+
+                updateAndDrawParticles();
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        // --- 8. KONFIGURASI GOOGLE MEDIAPIPE HANDS ---
+        function onHandsResults(results) {
+            // Tetapkan semula status aktif tangan
+            handsState[0].active = false;
+            handsState[1].active = false;
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                results.multiHandLandmarks.forEach((landmarks, index) => {
+                    if (index > 1) return; // Maksimum 2 tangan
+
+                    // Titik 4 = Hujung Ibu Jari, Titik 8 = Hujung Jari Telunjuk
+                    const thumbTip = landmarks[4];
+                    const indexTip = landmarks[8];
+
+                    // Koordinat dicerminkan (1 - x) untuk selari dengan paparan cermin
+                    const tx = (1 - thumbTip.x) * canvas.width;
+                    const ty = thumbTip.y * canvas.height;
+                    const ix = (1 - indexTip.x) * canvas.width;
+                    const iy = indexTip.y * canvas.height;
+
+                    // Titik tengah cubitan (Pinch)
+                    const pinchX = (tx + ix) / 2;
+                    const pinchY = (ty + iy) / 2;
+
+                    // Jarak antara ibu jari dan telunjuk dalam piksel
+                    const distPx = Math.hypot(tx - ix, ty - iy);
+                    // Ambang jarak Pinch responsif mengikut lebar skrin
+                    const pinchThreshold = Math.max(38, canvas.width * 0.038);
+                    const isPinching = distPx < pinchThreshold;
+
+                    // Tentukan slot tangan berdasarkan kedudukan X di skrin (Kiri vs Kanan)
+                    // Atau gunakan indeks sedia ada jika sudah memegang sesuatu
+                    let slotIdx = index;
+                    if (handsState[0].heldSlice && !handsState[1].heldSlice && index === 0) {
+                        slotIdx = 0;
+                    } else if (results.multiHandedness && results.multiHandedness[index]) {
+                        // Label MediaPipe dicerminkan kerana video diterbalikkan
+                        const rawLabel = results.multiHandedness[index].label;
+                        slotIdx = (rawLabel === 'Right') ? 0 : 1;
+                        if (handsState[slotIdx].active) slotIdx = 1 - slotIdx;
+                    }
+
+                    handsState[slotIdx].active = true;
+                    handsState[slotIdx].x = pinchX;
+                    handsState[slotIdx].y = pinchY;
+                    handsState[slotIdx].isPinching = isPinching;
+                    handsState[slotIdx].landmarks = landmarks;
+                });
+            }
+
+            // Kemaskini lampu penunjuk status tangan pada HUD
+            document.getElementById('leftHandDot').className = `w-3 h-3 rounded-full ${handsState[0].active ? 'bg-emerald-400 shadow-sm shadow-emerald-400' : 'bg-red-500'}`;
+            document.getElementById('rightHandDot').className = `w-3 h-3 rounded-full ${handsState[1].active ? 'bg-emerald-400 shadow-sm shadow-emerald-400' : 'bg-red-500'}`;
+        }
+
+        async function setupMediaPipe() {
+            const statusText = document.getElementById('cameraStatusText');
+            const statusBox = document.getElementById('cameraStatusBox');
+            const startBtn = document.getElementById('startGameBtn');
+
+            try {
+                const hands = new Hands({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                });
+
+                hands.setOptions({
+                    maxNumHands: 2,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.65,
+                    minTrackingConfidence: 0.6
+                });
+
+                hands.onResults(onHandsResults);
+
+                const camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await hands.send({ image: videoElement });
+                    },
+                    width: 1280,
+                    height: 720
+                });
+
+                await camera.start();
+                cameraReady = true;
+
+                statusBox.className = "flex items-center gap-2 text-xs sm:text-sm text-emerald-300 bg-emerald-950/60 border border-emerald-600/50 px-4 py-2 rounded-xl";
+                statusText.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> Kamera & Penjejak Dwi-Tangan Sedia!`;
+                startBtn.disabled = false;
+            } catch (err) {
+                console.warn('Kamera tidak dapat diakses:', err);
+                statusBox.className = "flex items-center gap-2 text-xs sm:text-sm text-amber-300 bg-amber-950/70 border border-amber-600/50 px-4 py-2 rounded-xl";
+                statusText.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> Mod Tanpa Kamera (Gunakan Tetikus / Sentuhan)`;
+                document.getElementById('fallbackHint').classList.remove('hidden');
+                startBtn.disabled = false;
+            }
+        }
+
+        // --- 9. PENGURUSAN ALIRAN PERMAINAN, PEMASA & UI ---
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function updateHUD() {
+            document.getElementById('scoreDisplay').textContent = score;
+            const comboBadge = document.getElementById('comboBadge');
+            if (combo > 1) {
+                comboBadge.textContent = `Kombo ${combo}x!`;
+                comboBadge.classList.remove('hidden');
+            } else {
+                comboBadge.classList.add('hidden');
+            }
+        }
+
+        let toastTimeout;
+        function showToast(msg, type = 'success') {
+            const toast = document.getElementById('feedbackToast');
+            toast.textContent = msg;
+            toast.className = `transition-opacity duration-300 bg-stone-900/95 border-2 font-display text-base sm:text-xl px-6 py-2 rounded-full shadow-2xl opacity-100 ${
+                type === 'success' ? 'border-emerald-400 text-emerald-300' : 'border-red-400 text-red-300'
+            }`;
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0');
+            }, 2200);
+        }
+
+        function formatTime(sec) {
+            const m = Math.floor(sec / 60).toString().padStart(2, '0');
+            const s = (sec % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function startGame() {
+            initAudio();
+            if (Tone && Tone.context.state !== 'running') Tone.start();
+
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            correctCount = 0;
+            wrongCount = 0;
+            timeLeft = 90;
+            pizzaSlices = [];
+            particles = [];
+            floatingTexts = [];
+            matchHistory = [];
+
+            updateHUD();
+            document.getElementById('timerDisplay').textContent = formatTime(timeLeft);
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('endScreen').classList.add('hidden');
+            document.getElementById('hudOverlay').classList.remove('hidden');
+
+            gameState = 'PLAYING';
+            spawnPizzaWave();
+
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (gameState !== 'PLAYING') return;
+                timeLeft--;
+                document.getElementById('timerDisplay').textContent = formatTime(timeLeft);
+
+                if (timeLeft <= 10 && timeLeft > 0) {
+                    playSound('tick');
+                    document.getElementById('timerDisplay').classList.add('text-red-400');
+                } else {
+                    document.getElementById('timerDisplay').classList.remove('text-red-400');
+                }
+
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function endGame() {
+            gameState = 'ENDED';
+            clearInterval(timerInterval);
+
+            document.getElementById('hudOverlay').classList.add('hidden');
+            document.getElementById('endScreen').classList.remove('hidden');
+
+            // Papar Statistik
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('finalCorrect').textContent = correctCount;
+            document.getElementById('finalMaxCombo').textContent = `${maxCombo}x`;
+
+            const totalAttempts = correctCount + wrongCount;
+            const accuracy = totalAttempts > 0 ? Math.round((correctCount / totalAttempts) * 100) : 0;
+            document.getElementById('finalAccuracy').textContent = `${accuracy}%`;
+
+            // Bina Senarai Analisis Jawapan
+            const listEl = document.getElementById('analysisList');
+            listEl.innerHTML = '';
+
+            if (matchHistory.length === 0) {
+                listEl.innerHTML = `<div class="text-center text-stone-400 py-8">Tiada percubaan cantuman direkodkan pada pusingan ini. Cuba cubit dua piza setara pada pusingan seterusnya!</div>`;
+            } else {
+                matchHistory.forEach((item, idx) => {
+                    const row = document.createElement('div');
+                    row.className = `flex items-center justify-between p-3 rounded-xl border ${
+                        item.correct ? 'bg-emerald-950/40 border-emerald-700/50' : 'bg-red-950/40 border-red-700/50'
+                    }`;
+
+                    row.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <span class="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${
+                                item.correct ? 'bg-emerald-500 text-stone-950' : 'bg-red-500 text-white'
+                            }">
+                                ${idx + 1}
+                            </span>
+                            <div>
+                                <div class="font-display font-bold text-base text-white">
+                                    ${item.f1} <span class="text-amber-400 mx-1">${item.correct ? '=' : '≠'}</span> ${item.f2}
+                                </div>
+                                <div class="text-xs text-stone-400">
+                                    ${item.correct ? `Bentuk Termudah: <span class="text-emerald-300 font-semibold">${item.base}</span>` : 'Nilai pecahan tidak setara'}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="font-display font-bold ${item.correct ? 'text-emerald-400' : 'text-red-400'}">
+                            ${item.points > 0 ? '+' + item.points : item.points}
+                        </div>
+                    `;
+                    listEl.appendChild(row);
+                });
+            }
+        }
+
+        // --- 10. PENDENGAR ACARA (EVENT LISTENERS) ---
+        window.addEventListener('resize', resizeCanvas);
+
+        document.getElementById('startGameBtn').addEventListener('click', startGame);
+        document.getElementById('restartGameBtn').addEventListener('click', startGame);
+        document.getElementById('endEarlyBtn').addEventListener('click', endGame);
+
+        document.getElementById('toggleSoundBtn').addEventListener('click', () => {
+            soundEnabled = !soundEnabled;
+            const icon = document.getElementById('soundIcon');
+            icon.className = soundEnabled ? 'fa-solid fa-volume-high text-lg' : 'fa-solid fa-volume-xmark text-lg text-stone-500';
+        });
+
+        // Kawalan sandaran Tetikus / Sentuhan (jika tiada kamera, membolehkan klik & seret)
+        canvas.addEventListener('pointerdown', (e) => {
+            if (gameState !== 'PLAYING') return;
+            pointerState.active = true;
+            pointerState.isPinching = true;
+            pointerState.x = e.clientX;
+            pointerState.y = e.clientY;
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (!pointerState.active) return;
+            pointerState.x = e.clientX;
+            pointerState.y = e.clientY;
+        });
+
+        window.addEventListener('pointerup', () => {
+            pointerState.isPinching = false;
+            pointerState.active = false;
+            if (pointerState.heldSlice) {
+                pointerState.heldSlice.heldBy = null;
+                pointerState.heldSlice = null;
+            }
+        });
+
+        // Permulaan Aplikasi
+        window.onload = () => {
+            resizeCanvas();
+            setupMediaPipe();
+            renderLoop();
+        };
+    </script>
+</body>
+</html>
